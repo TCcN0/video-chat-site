@@ -13,3 +13,8 @@ class_name = "ChatRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ChatRoom"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "video-chat-db"
+database_id = "e743c234-3c82-4a9b-a137-da526e7e69b8"  
