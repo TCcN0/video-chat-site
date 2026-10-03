@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频播放 · 聊天室</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #0e0e0e; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+
+        .app { display: flex; width: 100%; max-width: 1600px; height: 90vh; background: #1a1a1a; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8); border: 1px solid #2a2a2a; }
+
+        /* ===== 左侧视频区域 ===== */
+        .video-panel { flex: 1; display: flex; flex-direction: column; background: #000; position: relative; order: 1; }
+        .video-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+        video { width: 100%; height: 100%; object-fit: contain; outline: none; background: #000; display: block; }
+        .site-icon { position: absolute; top: 20px; right: 20px; z-index: 10; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.15); }
+        .site-icon img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+        .site-icon i { font-size: 28px; color: #fff; }
+        .conn-status { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); padding: 6px 12px; border-radius: 40px; font-size: 12px; color: #ddd; display: flex; align-items: center; gap: 6px; }
+        .conn-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; }
+        .conn-status.connected .dot { background: #2ecc71; }
+        .conn-status.disconnected .dot { background: #ef4444; }
+
+        /* ===== 右侧聊天区域 ===== */
+        .chat-panel { width: 340px; background: #121212; display: flex; flex-direction: column; border-left: 1px solid #2c2c2c; flex-shrink: 0; order: 2; }
+        .chat-header { padding: 18px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #2c2c2c; background: #0b0b0b; }
+        .chat-header i { font-size: 26px; color: #9147ff; }
+        .chat-header h2 { font-size: 18px; font-weight: 600; color: #efeff1; }
+        .online-badge { margin-left: auto; background: #2d2d2d; padding: 6px 12px; border-radius: 40px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: #dedee3; border: 1px solid #3a3a3a; }
+        .live-dot { width: 8px; height: 8px; background: #2ecc71; border-radius: 50%; box-shadow: 0 0 6px #2ecc71; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%{opacity:.8;transform:scale(1)} 50%{opacity:1;transform:scale(1.2)} 100%{opacity:.8;transform:scale(1)} }
+
+        .chat-messages { flex: 1; overflow-y: auto; padding: 16px 12px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: #444 #1e1e1e; }
+        .chat-messages::-webkit-scrollbar { width: 6px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
+
+        .message { display: flex; gap: 10px; align-items: flex-start; animation: fadeIn .2s ease; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+        .avatar { width: 32px; height: 32px; border-radius: 50%; background: #2e2e2e; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: #fff; flex-shrink: 0; }
+        .message-content { background: #1e1e1e; padding: 8px 14px; border-radius: 18px; border-top-left-radius: 4px; max-width: 85%; }
+        .username { font-size: 13px; font-weight: 600; color: #a970ff; margin-bottom: 2px; }
+        .text { font-size: 14px; line-height: 1.4; color: #efeff1; word-break: break-word; }
+        .timestamp { font-size: 10px; color: #7e7e8a; margin-top: 4px; text-align: right; }
+        .system-msg { text-align: center; font-size: 12px; color: #888; padding: 2px 0; font-style: italic; }
+
+        .chat-input-area { padding: 12px; border-top: 1px solid #2c2c2c; background: #0b0b0b; display: flex; flex-direction: column; gap: 8px; }
+        .chat-input-row { display: flex; gap: 8px; }
+        .chat-input-area input { flex: 1; background: #1f1f1f; border: 1px solid #3a3a3a; border-radius: 40px; padding: 12px 16px; color: #efeff1; font-size: 14px; outline: none; }
+        .chat-input-area input:focus { border-color: #9147ff; }
+        .chat-input-area button { background: #9147ff; border: none; border-radius: 40px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; cursor: pointer; flex-shrink: 0; }
+        .chat-input-area button:hover { background: #772ce8; }
+        .chat-input-area button:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* ===== 手机适配：视频上，聊天下 ===== */
+        @media (max-width: 800px) {
+            .app { flex-direction: column; height: auto; max-height: 95vh; }
+            .video-panel { height: 45vh; }
+            .chat-panel { width: 100%; height: 320px; border-left: none; border-top: 1px solid #2c2c2c; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- ===== 左侧：视频 ===== -->
+        <main class="video-panel">
+            <div class="site-icon" title="网站图标">
+                <!-- 换成自己的图标：<img src="/logo.png" alt="logo"> -->
+                <i class="fas fa-play-circle"></i>
+            </div>
+            <div class="conn-status" id="connStatus">
+                <span class="dot"></span><span id="connText">连接中...</span>
+            </div>
+            <div class="video-container">
+                <video id="randomVideo" controls autoplay loop playsinline>
+                    您的浏览器不支持视频标签。
+                </video>
+            </div>
+        </main>
+
+        <!-- ===== 右侧：聊天室 ===== -->
+        <aside class="chat-panel">
+            <div class="chat-header">
+                <i class="fas fa-comment-dots"></i>
+                <h2>聊天室</h2>
+                <div class="online-badge">
+                    <span class="live-dot"></span>
+                    <i class="fas fa-user" style="font-size: 12px;"></i>
+                    <span id="onlineCount">0</span>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages"></div>
+
+            <div class="chat-input-area">
+                <div class="chat-input-row">
+                    <input type="text" id="nameInput" placeholder="昵称（可修改）" maxlength="20">
+                </div>
+                <div class="chat-input-row">
+                    <input type="text" id="messageInput" placeholder="说点什么..." maxlength="200" autocomplete="off">
+                    <button id="sendButton" disabled><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // ============ 1. 随机视频 ============
+        const videoSources = [
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+        ];
+        const videoElement = document.getElementById('randomVideo');
+        const randomIndex = Math.floor(Math.random() * videoSources.length);
+        videoElement.src = videoSources[randomIndex];
+        videoElement.loop = true;
+        videoElement.muted = false;
+        videoElement.volume = 1.0;
+
+        const playPromise = videoElement.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(() => {
+                const unlock = () => {
+                    videoElement.play().catch(() => {});
+                    document.removeEventListener('click', unlock);
+                };
+                document.addEventListener('click', unlock, { once: true });
+            });
+        }
+
+        // ============ 2. WebSocket 聊天室 ============
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const nameInput = document.getElementById('nameInput');
+        const sendButton = document.getElementById('sendButton');
+        const onlineCountEl = document.getElementById('onlineCount');
+        const connStatus = document.getElementById('connStatus');
+        const connText = document.getElementById('connText');
+
+        let ws = null;
+        let reconnectTimer = null;
+        let myName = '';
+
+        const savedName = localStorage.getItem('chatName');
+        if (savedName) {
+            nameInput.value = savedName;
+            myName = savedName;
+        }
+
+        function connect() {
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${proto}//${location.host}/ws`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                connStatus.className = 'conn-status connected';
+                connText.textContent = '已连接';
+                sendButton.disabled = false;
+                if (myName) {
+                    ws.send(JSON.stringify({ type: 'rename', name: myName }));
+                }
+            };
+
+            ws.onmessage = (event) => {
+                let data;
+                try { data = JSON.parse(event.data); } catch { return; }
+
+                if (data.type === 'online') {
+                    onlineCountEl.textContent = data.count;
+                } else if (data.type === 'chat') {
+                    renderChatMessage(data);
+                } else if (data.type === 'system') {
+                    renderSystemMessage(data.text);
+                }
+            };
+
+            ws.onclose = () => {
+                connStatus.className = 'conn-status disconnected';
+                connText.textContent = '已断开，重连中...';
+                sendButton.disabled = true;
+                clearTimeout(reconnectTimer);
+                reconnectTimer = setTimeout(connect, 3000);
+            };
+
+            ws.onerror = () => {
+                connStatus.className = 'conn-status disconnected';
+                connText.textContent = '连接错误';
+            };
+        }
+
+        function renderChatMessage(msg) {
+            const div = document.createElement('div');
+            div.className = 'message';
+            const initial = (msg.name || '?').charAt(0).toUpperCase();
+            const hue = (msg.id * 137) % 360;
+            const color = `hsl(${hue}, 65%, 50%)`;
+            const time = new Date(msg.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+            div.innerHTML = `
+                <div class="avatar" style="background: ${color};">${escapeHtml(initial)}</div>
+                <div class="message-content">
+                    <div class="username">${escapeHtml(msg.name)}</div>
+                    <div class="text">${escapeHtml(msg.text)}</div>
+                    <div class="timestamp">${time}</div>
+                </div>
+            `;
+            chatMessages.appendChild(div);
+            trimMessages();
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function renderSystemMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'system-msg';
+            div.textContent = text;
+            chatMessages.appendChild(div);
+            trimMessages();
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function trimMessages() {
+            while (chatMessages.children.length > 100) {
+                chatMessages.removeChild(chatMessages.firstChild);
+            }
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function sendChat() {
+            const text = messageInput.value.trim();
+            if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+            ws.send(JSON.stringify({ type: 'chat', text }));
+            messageInput.value = '';
+        }
+
+        function sendRename() {
+            const newName = nameInput.value.trim();
+            if (!newName || !ws || ws.readyState !== WebSocket.OPEN) return;
+            if (newName === myName) return;
+            myName = newName;
+            localStorage.setItem('chatName', newName);
+            ws.send(JSON.stringify({ type: 'rename', name: newName }));
+        }
+
+        sendButton.addEventListener('click', sendChat);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+        });
+        nameInput.addEventListener('change', sendRename);
+        nameInput.addEventListener('blur', sendRename);
+
+        // 启动连接
+        connect();
+    </script>
+</body>
+</html>
