@@ -3,12 +3,30 @@ export class ChatRoom {
   constructor(state, env) {
     this.state = state;
     this.env = env;
-    this.sessions = new Map(); // WebSocket -> { id, name }
-    this.history = [];         // 最近 100 条消息
+    this.sessions = new Map();
     this.nextId = 1;
+    this.initialized = false;
+  }
+
+  async init() {
+    if (this.initialized) return;
+    this.initialized = true;
+    // 从 D1 加载最近 100 条消息到内存作为缓存
+    try {
+      const result = await this.env.DB.prepare(
+        `SELECT * FROM messages WHERE room = 'main' ORDER BY ts DESC LIMIT 100`
+      ).all();
+      // 反转顺序，最早的在前面
+      this.history = (result.results || []).reverse();
+    } catch (e) {
+      console.error('加载历史失败:', e);
+      this.history = [];
+    }
   }
 
   async fetch(request) {
+    await this.init();
+
     const upgradeHeader = request.headers.get('Upgrade');
     if (!upgradeHeader || upgradeHeader !== 'websocket') {
       return new Response('Expected WebSocket', { status: 426 });
@@ -22,7 +40,7 @@ export class ChatRoom {
     const userId = this.nextId++;
     const userName = `游客${userId.toString().padStart(3, '0')}`;
 
-    this.sessions.set(server, { id: userId, name: userName });
+    this.sessions.set(server, { id: userId, name: userName, color: `hsl(${(userId * 137) % 360}, 65%, 50%)` });
 
     // 发送历史消息给新用户
     for (const msg of this.history) {
@@ -30,11 +48,13 @@ export class ChatRoom {
     }
 
     // 广播加入 + 在线人数
-    this.broadcast({
+    const sysMsg = {
       type: 'system',
       text: `${userName} 加入了聊天室`,
       ts: Date.now()
-    });
+    };
+    await this.saveToDB(sysMsg);
+    this.broadcast(sysMsg);
     this.broadcastOnlineCount();
 
     return new Response(null, { status: 101, webSocket: client });
@@ -59,13 +79,12 @@ export class ChatRoom {
         type: 'chat',
         id: session.id,
         name: session.name,
+        color: session.color,
         text,
         ts: Date.now()
       };
 
-      this.history.push(msg);
-      if (this.history.length > 100) this.history.shift();
-
+      await this.saveToDB(msg);
       this.broadcast(msg);
     }
 
@@ -74,11 +93,13 @@ export class ChatRoom {
       if (newName) {
         session.name = newName;
         this.sessions.set(ws, session);
-        this.broadcast({
+        const sysMsg = {
           type: 'system',
           text: `${newName} 修改了昵称`,
           ts: Date.now()
-        });
+        };
+        await this.saveToDB(sysMsg);
+        this.broadcast(sysMsg);
         this.broadcastOnlineCount();
       }
     }
@@ -88,11 +109,13 @@ export class ChatRoom {
     const session = this.sessions.get(ws);
     if (session) {
       this.sessions.delete(ws);
-      this.broadcast({
+      const sysMsg = {
         type: 'system',
         text: `${session.name} 离开了聊天室`,
         ts: Date.now()
-      });
+      };
+      await this.saveToDB(sysMsg);
+      this.broadcast(sysMsg);
       this.broadcastOnlineCount();
     }
   }
@@ -102,6 +125,32 @@ export class ChatRoom {
     if (session) {
       this.sessions.delete(ws);
       this.broadcastOnlineCount();
+    }
+  }
+
+  // 保存到 D1
+  async saveToDB(msg) {
+    try {
+      await this.env.DB.prepare(
+        `INSERT INTO messages (room, user_id, name, color, text, type, ts) 
+         VALUES ('main', ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        msg.id || null,
+        msg.name || null,
+        msg.color || null,
+        msg.text || null,
+        msg.type || 'chat',
+        msg.ts || Date.now()
+      ).run();
+
+      // 只保留最近 500 条
+      await this.env.DB.prepare(
+        `DELETE FROM messages WHERE room = 'main' AND id NOT IN (
+           SELECT id FROM messages WHERE room = 'main' ORDER BY ts DESC LIMIT 500
+         )`
+      ).run();
+    } catch (e) {
+      console.error('保存消息失败:', e);
     }
   }
 
