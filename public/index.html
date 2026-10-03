@@ -108,12 +108,9 @@
     <script>
         // ============ 1. 随机视频 ============
         const videoSources = [
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+            '/videos/video1.mp4',
+            '/videos/video2.mp4',
+            '/videos/video3.mp4',
         ];
         const videoElement = document.getElementById('randomVideo');
         const randomIndex = Math.floor(Math.random() * videoSources.length);
